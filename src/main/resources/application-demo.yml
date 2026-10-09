@@ -1,0 +1,13 @@
+# Demo profile: compresses time so the video shows both reminders within about three minutes.
+# Only durations change; every code path is the same as in production.
+reminder:
+  types:
+    REMINDER_24H:
+      offset: PT2M
+      max-lateness: PT55S         # windows stay apart: the 24H one closes before the 2H one opens
+    REMINDER_2H:
+      offset: PT1M
+      max-lateness: PT55S         # wide enough that a crashed send is reclaimed inside its window
+  worker:
+    poll-interval: PT2S
+    processing-lease: PT30S       # longer than the crash demo's 20 s stub latency

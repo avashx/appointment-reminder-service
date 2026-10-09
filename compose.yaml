@@ -1,0 +1,40 @@
+# One command for reviewers:  docker compose up --build
+# Demo with compressed time:   SPRING_PROFILES_ACTIVE=demo docker compose up --build
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: reminders
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      MYSQL_ROOT_PASSWORD: root
+    command: ["--default-time-zone=+00:00"]
+    ports:
+      - "3306:3306"
+    healthcheck:
+      # 127.0.0.1 forces TCP, which only answers once the real server is up (not the init-time one).
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    volumes:
+      - db-data:/var/lib/mysql
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/reminders?useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: app
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+      NOTIFICATION_STUB_LATENCY: ${NOTIFICATION_STUB_LATENCY:-PT0S}
+    ports:
+      - "8080:8080"
+    # SIGTERM -> graceful shutdown finishes in-flight sends; give it longer than its own 30s budget.
+    stop_grace_period: 40s
+
+volumes:
+  db-data:

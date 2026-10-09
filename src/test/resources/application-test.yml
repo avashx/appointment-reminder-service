@@ -1,0 +1,5 @@
+# Integration tests drive ReminderWorker themselves (runOnce, claimDueBatch, ...), so nothing runs in the background.
+reminder:
+  worker:
+    enabled: false
+    batch-size: 5                 # small, so tests can exercise "more due than one batch" with a handful of rows

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Service Reminders</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cg fill=%22none%22 stroke=%22%23ef6d22%22 stroke-width=%223.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M6 2.5v19%22/%3E%3Cpath d=%22M17.5 9.5 6.5 16%22/%3E%3Cpath d=%22M10.5 13.6 17.5 21.5%22/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
+  <link rel="stylesheet" href="console.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap mainbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 2.5v19M17.5 9.5 6.5 16M10.5 13.6 17.5 21.5" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">Service <strong>Reminders</strong></span>
+      </div>
+      <div class="mainbar-meta">
+        <span id="timing" class="timing"></span>
+        <span id="connection" class="connection" data-state="unknown">Connecting</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <h1>Appointment reminders</h1>
+      <p>Book a vehicle service appointment and follow its reminders, 24 hours and 2 hours before the visit. A customer never receives the same reminder twice: if the service crashes in the middle of a send, the reminder is reclaimed when its lease expires and finished without being sent again.</p>
+    </section>
+
+    <div class="layout">
+      <div class="col-side">
+        <section class="panel">
+          <div class="panel-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path class="accent" d="M8.5 14.5l2.3 2.3 4.7-4.7"/></svg>
+            <h2>Book a service appointment</h2>
+          </div>
+          <form id="book" class="form" novalidate>
+            <label><span class="label">Dealership ID</span>
+              <input name="dealershipId" type="number" min="1" step="1" value="1" required>
+            </label>
+            <label><span class="label">Customer name</span>
+              <input name="name" value="Aarav Sharma" autocomplete="off" required>
+            </label>
+            <div class="row-2">
+              <label><span class="label">Mobile <span class="hint">E.164</span></span>
+                <input name="phone" value="+919876543210" autocomplete="off">
+              </label>
+              <label><span class="label">Email <span class="hint">optional</span></span>
+                <input name="email" type="email" autocomplete="off">
+              </label>
+            </div>
+            <fieldset class="segmented">
+              <legend>Remind by</legend>
+              <label><input type="radio" name="channel" value="SMS" checked><span>Text</span></label>
+              <label><input type="radio" name="channel" value="EMAIL"><span>Email</span></label>
+            </fieldset>
+            <div class="row-2">
+              <label><span class="label">Vehicle</span>
+                <input name="vehicle" value="2023 Tata Nexon" autocomplete="off">
+              </label>
+              <label><span class="label">Service</span>
+                <input name="serviceType" value="Oil change" list="services" autocomplete="off">
+                <datalist id="services">
+                  <option value="Oil change"><option value="Tyre rotation"><option value="Brake inspection">
+                  <option value="30,000-km service"><option value="Recall repair">
+                </datalist>
+              </label>
+            </div>
+            <label><span class="label">Appointment time <span class="hint">your clock</span></span>
+              <input name="scheduledAt" type="datetime-local" step="1" required>
+            </label>
+            <div class="quick" id="quick">
+              <button type="button" data-minutes="3">+3 min</button>
+              <button type="button" data-minutes="30">+30 min</button>
+              <button type="button" data-minutes="300">+5 h</button>
+              <button type="button" data-minutes="4320">+3 days</button>
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn-primary">Book appointment</button>
+              <button type="button" id="replay" class="btn-secondary" disabled title="Resend the last request with the same Idempotency-Key">Retry last request</button>
+            </div>
+            <div id="result" class="result" hidden></div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6z"/><path class="accent" d="M8.7 12.2l2.3 2.3 4.4-4.4"/></svg>
+            <h2>Why a reminder can't go out twice</h2>
+          </div>
+          <ol class="layers">
+            <li><strong>One row per reminder.</strong> <code>UNIQUE (appointment, revision, type)</code> on the reminder table.</li>
+            <li><strong>One worker per attempt.</strong> Claimed with <code>FOR UPDATE SKIP LOCKED</code>, leased until <code>processing_until</code>, every write fenced by a claim token.</li>
+            <li><strong>One hand-off per key.</strong> The idempotency key is committed to <code>notification_delivery</code> before the provider is called; a retry finds it and sends nothing.</li>
+          </ol>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20.5h16"/><path class="accent" d="M7 17V11M12 17V6M17 17v-4"/></svg>
+            <h2>Reminders by status</h2>
+            <span class="head-note">last 15 appointments</span>
+          </div>
+          <dl id="counts" class="counts"></dl>
+        </section>
+      </div>
+
+      <div class="col-main">
+        <section class="panel">
+          <div class="panel-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/><path class="accent" d="M16 16.5l2 2 3.5-4"/></svg>
+            <h2>Service log</h2>
+            <span class="head-note">live, same lines as the server</span>
+          </div>
+          <p id="logs-empty" class="empty">No log lines yet. Book an appointment and the create and send lines show up here.</p>
+          <ol id="logs" class="log-feed" hidden></ol>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h1M5 12h1M5 17.5h1"/><path d="M9.5 6.5H19M9.5 12H19M9.5 17.5H19"/><circle class="accent" cx="5.5" cy="12" r="2.2"/></svg>
+            <h2>Appointments</h2>
+            <span class="head-note">refreshes every 2 s</span>
+          </div>
+          <div id="reschedule" class="reschedule" hidden>
+            <span>Reschedule <strong id="reschedule-label"></strong> to</span>
+            <input id="reschedule-at" type="datetime-local" step="1">
+            <button type="button" id="reschedule-save" class="btn-primary btn-small">Save</button>
+            <button type="button" id="reschedule-cancel" class="btn-link">Close</button>
+            <span id="reschedule-error" class="reschedule-error"></span>
+          </div>
+          <div class="table-wrap">
+            <table class="grid">
+              <thead>
+                <tr><th>#</th><th>Customer</th><th>Appointment</th><th>Reminders</th><th></th></tr>
+              </thead>
+              <tbody id="appointments"></tbody>
+            </table>
+          </div>
+          <p id="appointments-empty" class="empty">No appointments yet. Book one on the left.</p>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="console.js"></script>
+</body>
+</html>

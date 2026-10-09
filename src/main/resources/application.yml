@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: appointment-reminder-service
+  datasource:
+    # Local development default; Docker Compose and the tests override these.
+    url: jdbc:mysql://localhost:3306/reminders?useSSL=false&allowPublicKeyRetrieval=true
+    username: app
+    password: app
+    hikari:
+      # 8 send threads + the claiming thread + headroom for HTTP requests.
+      maximum-pool-size: 20
+      # No logic here depends on repeatable snapshots: every decision is a row lock (SKIP LOCKED),
+      # a conditional UPDATE or a unique key. READ COMMITTED also avoids InnoDB gap locks.
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema; Hibernate only checks the entities match it
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC          # DATETIME columns always hold UTC, whatever the JVM's default zone is
+  task:
+    scheduling:
+      thread-name-prefix: reminder-worker-
+      shutdown:
+        await-termination: true   # on SIGTERM, let a running cycle finish instead of interrupting it
+        await-termination-period: 30s
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+reminder:
+  types:
+    REMINDER_24H:
+      offset: PT24H               # due = scheduledAt - offset
+      max-lateness: PT6H          # still worth sending up to 6h late (window ends at T-18h)
+    REMINDER_2H:
+      offset: PT2H
+      max-lateness: PT90M         # window ends at T-30m, so the two windows never overlap
+  worker:
+    enabled: true                 # every instance runs the worker; SKIP LOCKED keeps their batches disjoint
+    poll-interval: PT5S
+    batch-size: 200
+    threads: 8
+    processing-lease: PT2M        # must exceed the provider call timeout; after it, the row is reclaimed
+    max-attempts: 5               # every claim counts, including ones whose worker crashed
+    backoff-initial: PT30S
+    backoff-max: PT10M
+  booking:
+    max-horizon: P365D            # reject appointments more than a year ahead (likely typos)
+
+notification:
+  stub:
+    latency: PT0S                 # artificial provider latency, used by the crash demo
